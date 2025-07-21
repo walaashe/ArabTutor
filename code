@@ -1,0 +1,98 @@
+import openai
+import gradio as gr
+import csv
+from datetime import datetime
+import os
+
+# ✅ إعداد API
+openai.api_key = "sk-"
+
+# ✅ اسم ملف CSV
+log_file_path = "log.csv"
+
+# ✅ إنشاء الملف إذا لم يكن موجودًا
+if not os.path.exists(log_file_path):
+    with open(log_file_path, mode='w', encoding='utf-8-sig', newline='') as file:
+        writer = csv.writer(file)
+        writer.writerow(["📅 التاريخ", "📘 المادة", "❓ السؤال", "✅ الإجابة", "🚩 فلاج"])
+
+# ✅ الوظيفة الأساسية للرد على الطالب
+def tutor_response(user_input, subject):
+    client = openai.OpenAI(api_key=openai.api_key)
+
+    if subject == "اللغة العربية":
+        system_prompt = "أنت معلم متخصص في اللغة العربية تشرح لطلاب المدارس بلغة عربية مبسطة حسب مستواهم."
+    elif subject == "الرياضيات":
+        system_prompt = "أنت معلم رياضيات تشرح المفاهيم والأفكار للطلاب بأسلوب سهل ومبسط."
+    elif subject == "العلوم":
+        system_prompt = "أنت معلم علوم تشرح المفاهيم العلمية بطريقة سهلة ومبسطة لطلاب المدارس."
+    else:
+        system_prompt = "أنت معلم ذكي تشرح أي مادة دراسية بلغة عربية مبسطة للطلاب."
+
+    try:
+        response = client.chat.completions.create(
+            model="gpt-4",
+            messages=[
+                {"role": "system", "content": system_prompt},
+                {"role": "user", "content": user_input}
+            ],
+            temperature=0.7,
+            max_tokens=500
+        )
+        answer_text = response.choices[0].message.content
+
+        # ✅ تسجيل في الملف
+        with open(log_file_path, mode='a', encoding='utf-8-sig', newline='') as file:
+            writer = csv.writer(file)
+            writer.writerow([datetime.now().strftime("%Y-%m-%d %H:%M:%S"), subject, user_input, answer_text, "No"])
+        
+        return answer_text, gr.update(visible=True, interactive=True, value="🚩 فلاج"), user_input, answer_text, subject
+    except Exception as e:
+        return f"❌ حدث خطأ: {str(e)}", gr.update(visible=False), "", "", ""
+
+# ✅ زر الفلاج لتحديث السطر الأخير
+def flag_answer(temp_question, temp_answer, temp_subject):
+    lines = []
+    with open(log_file_path, mode='r', encoding='utf-8-sig') as file:
+        lines = list(csv.reader(file))
+
+    if len(lines) > 1:
+        lines[-1][-1] = "Yes"
+
+    with open(log_file_path, mode='w', encoding='utf-8-sig', newline='') as file:
+        writer = csv.writer(file)
+        writer.writerows(lines)
+
+    return gr.update(value="✅ تم تمييزه", interactive=False)
+
+# ✅ واجهة Gradio باستخدام Blocks
+with gr.Blocks(title="المعلم الذكي") as iface:
+    gr.Markdown("### 👨‍🏫 المعلم الذكي للمرحلة الأساسية")
+
+    with gr.Row():
+        question = gr.Textbox(lines=2, placeholder="اكتب سؤالك هنا...", label="❓ السؤال")
+        subject = gr.Dropdown(choices=["اللغة العربية", "الرياضيات", "العلوم"], label="📘 اختر المادة", value="اللغة العربية")
+        send_btn = gr.Button("أرسل ✅")
+
+    answer = gr.Textbox(label="✅ الإجابة")
+    flag_btn = gr.Button("🚩 فلاج", visible=False)
+
+    # ✅ عناصر لحفظ القيم مؤقتًا
+    temp_question = gr.Textbox(visible=False)
+    temp_answer = gr.Textbox(visible=False)
+    temp_subject = gr.Textbox(visible=False)
+
+    send_btn.click(
+        fn=tutor_response,
+        inputs=[question, subject],
+        outputs=[answer, flag_btn, temp_question, temp_answer, temp_subject]
+    )
+
+    flag_btn.click(
+        fn=flag_answer,
+        inputs=[temp_question, temp_answer, temp_subject],
+        outputs=[flag_btn]
+    )
+
+# ✅ تشغيل الواجهة
+iface.launch(share=True)
