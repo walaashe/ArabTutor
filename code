@@ -7,17 +7,19 @@ import os
 # ✅ إعداد API
 openai.api_key = "sk-"
 
-# ✅ اسم ملف CSV
+# ✅ ملف السجل
 log_file_path = "log.csv"
-
-# ✅ إنشاء الملف إذا لم يكن موجودًا
 if not os.path.exists(log_file_path):
     with open(log_file_path, mode='w', encoding='utf-8-sig', newline='') as file:
         writer = csv.writer(file)
         writer.writerow(["📅 التاريخ", "📘 المادة", "❓ السؤال", "✅ الإجابة", "🚩 فلاج"])
 
-# ✅ الوظيفة الأساسية للرد على الطالب
+# ✅ سجل المحادثة العالمي
+chat_history = []
+
+# ✅ الرد على الطالب مع history
 def tutor_response(user_input, subject):
+    global chat_history
     client = openai.OpenAI(api_key=openai.api_key)
 
     if subject == "اللغة العربية":
@@ -29,19 +31,24 @@ def tutor_response(user_input, subject):
     else:
         system_prompt = "أنت معلم ذكي تشرح أي مادة دراسية بلغة عربية مبسطة للطلاب."
 
+    # ✅ جهز الرسائل
+    messages = [{"role": "system", "content": system_prompt}] + chat_history + [{"role": "user", "content": user_input}]
+
     try:
         response = client.chat.completions.create(
             model="gpt-4",
-            messages=[
-                {"role": "system", "content": system_prompt},
-                {"role": "user", "content": user_input}
-            ],
+            messages=messages,
             temperature=0.7,
             max_tokens=500
         )
         answer_text = response.choices[0].message.content
 
-        # ✅ تسجيل في الملف
+        # ✅ تحديث سجل المحادثة (آخر 3 تبادلات فقط)
+        chat_history.append({"role": "user", "content": user_input})
+        chat_history.append({"role": "assistant", "content": answer_text})
+        chat_history = chat_history[-6:]
+
+        # ✅ تسجيل CSV
         with open(log_file_path, mode='a', encoding='utf-8-sig', newline='') as file:
             writer = csv.writer(file)
             writer.writerow([datetime.now().strftime("%Y-%m-%d %H:%M:%S"), subject, user_input, answer_text, "No"])
@@ -50,7 +57,7 @@ def tutor_response(user_input, subject):
     except Exception as e:
         return f"❌ حدث خطأ: {str(e)}", gr.update(visible=False), "", "", ""
 
-# ✅ زر الفلاج لتحديث السطر الأخير
+# ✅ زر الفلاج
 def flag_answer(temp_question, temp_answer, temp_subject):
     lines = []
     with open(log_file_path, mode='r', encoding='utf-8-sig') as file:
@@ -65,7 +72,7 @@ def flag_answer(temp_question, temp_answer, temp_subject):
 
     return gr.update(value="✅ تم تمييزه", interactive=False)
 
-# ✅ واجهة Gradio باستخدام Blocks
+# ✅ واجهة Gradio
 with gr.Blocks(title="المعلم الذكي") as iface:
     gr.Markdown("### 👨‍🏫 المعلم الذكي للمرحلة الأساسية")
 
@@ -77,7 +84,6 @@ with gr.Blocks(title="المعلم الذكي") as iface:
     answer = gr.Textbox(label="✅ الإجابة")
     flag_btn = gr.Button("🚩 فلاج", visible=False)
 
-    # ✅ عناصر لحفظ القيم مؤقتًا
     temp_question = gr.Textbox(visible=False)
     temp_answer = gr.Textbox(visible=False)
     temp_subject = gr.Textbox(visible=False)
@@ -94,5 +100,5 @@ with gr.Blocks(title="المعلم الذكي") as iface:
         outputs=[flag_btn]
     )
 
-# ✅ تشغيل الواجهة
+# ✅ تشغيل
 iface.launch(share=True)
